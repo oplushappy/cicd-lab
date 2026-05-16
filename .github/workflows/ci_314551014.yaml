@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Security audit
+        run: npm audit --audit-level=high
+
       - name: TypeScript typecheck
         run: npm run typecheck
 
@@ -43,14 +46,15 @@ jobs:
 
       - name: Test
         run: npm run test
-      
+
       - name: Publish test results
         uses: dorny/test-reporter@v1
-        if: always()
+        if: always() && !env.ACT
         with:
           name: Vitest Test Results (Node ${{ matrix.node-version }})
           path: test-results/junit.xml
           reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Compute image tag
         id: meta
@@ -75,11 +79,10 @@ jobs:
 
       - name: Build Docker image
         if: ${{ matrix.node-version == '24' }}
-        run: docker build -t my-app:${{ steps.meta.outputs.image_tag }} .
+        run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/cicd-lab:${{ steps.meta.outputs.image_tag }} .
 
-
-
-  cd:
-    if: ${{ startsWith(github.ref, 'refs/heads/release/') }}
-    needs: ci
-    uses: ./.github/workflows/cd.yaml
+      - name: Push to Docker Hub
+        if: ${{ matrix.node-version == '24' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) }}
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/cicd-lab:${{ steps.meta.outputs.image_tag }}
